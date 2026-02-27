@@ -5,56 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CS2 Anti-Cheat Checker</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .lang-toggle { position:fixed; top:12px; right:16px; z-index:200;
+      display:flex; gap:4px; background:var(--bg-card); border:1px solid var(--border);
+      border-radius:6px; padding:2px; }
+    .lang-btn { padding:4px 10px; border:none; border-radius:4px;
+      cursor:pointer; font-size:12px; font-weight:600;
+      background:transparent; color:var(--text-secondary); transition:all .15s; }
+    .lang-btn.active { background:var(--accent); color:#fff; }
+  </style>
 </head>
 <body>
 
+<!-- Language toggle -->
+<div class="lang-toggle">
+  <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+  <button class="lang-btn" data-lang="ru" onclick="setLang('ru')">RU</button>
+</div>
+
 <div id="app">
-  <!-- ═══ INPUT SECTION ═══ -->
+  <!-- INPUT SECTION -->
   <div id="input-section">
     <div class="hero">
       <h1>&#128737; CS2 Anti-Cheat Checker</h1>
-      <p class="subtitle">Upload a demo or paste a link — get suspicion analysis for every player</p>
+      <p class="subtitle" data-i18n="subtitle"></p>
     </div>
 
-    <!-- Tabs -->
     <div class="tabs">
-      <button class="tab active" data-tab="upload">Upload File</button>
-      <button class="tab" data-tab="url">Demo URL</button>
+      <button class="tab active" data-tab="upload" data-i18n="tab_upload"></button>
+      <button class="tab" data-tab="url" data-i18n="tab_url"></button>
       <button class="tab" data-tab="faceit" id="faceit-tab" style="display:none">Faceit</button>
     </div>
 
-    <!-- Upload tab -->
     <div id="tab-upload" class="tab-content active">
       <div id="drop-zone">
         <div class="drop-icon">&#128193;</div>
-        <div class="drop-text">Drag & drop <strong>.dem</strong> / <strong>.dem.zst</strong> / <strong>.dem.gz</strong> here</div>
-        <div class="drop-hint">or click to select a file</div>
+        <div class="drop-text">Drag & drop <strong>.dem</strong> / <strong>.dem.zst</strong> / <strong>.dem.gz</strong></div>
+        <div class="drop-hint" data-i18n="drop_hint"></div>
       </div>
       <input type="file" id="file-input" accept=".dem,.zst,.gz" hidden>
     </div>
 
-    <!-- URL tab -->
     <div id="tab-url" class="tab-content">
       <div class="url-form">
-        <input type="text" id="url-input" placeholder="https://demos.faceit.com/... or any direct .dem link" spellcheck="false">
-        <button class="btn-primary" id="url-submit">Analyze</button>
+        <input type="text" id="url-input" placeholder="" spellcheck="false">
+        <button class="btn-primary" id="url-submit" data-i18n="btn_analyze"></button>
       </div>
-      <p class="hint">Direct .dem / .dem.gz / .dem.zst download link (e.g. from Faceit, Leetify)</p>
-
-      <!-- Steam share code info box (hidden by default) -->
+      <p class="hint" data-i18n="url_hint"></p>
       <div id="steam-info" class="info-box" style="display:none; margin-top:12px;">
-        <strong>&#128270; Decoded share code:</strong>
+        <strong>&#128270; <span data-i18n="decoded_sharecode"></span></strong>
         <div id="steam-info-content" style="margin-top:6px;"></div>
       </div>
     </div>
 
-    <!-- Faceit tab -->
     <div id="tab-faceit" class="tab-content">
       <div class="url-form">
         <input type="text" id="faceit-nickname" placeholder="Faceit nickname" spellcheck="false">
-        <button class="btn-primary" id="faceit-search">Search</button>
+        <button class="btn-primary" id="faceit-search" data-i18n="btn_search"></button>
       </div>
-
       <div id="faceit-player" class="card" style="display:none">
         <div class="faceit-player-info">
           <img id="faceit-avatar" src="" alt="" class="avatar">
@@ -63,53 +71,166 @@
             <div id="faceit-elo" class="text-muted"></div>
           </div>
         </div>
-        <button class="btn-primary" id="faceit-load-matches">Load Matches</button>
+        <button class="btn-primary" id="faceit-load-matches" data-i18n="btn_load_matches"></button>
       </div>
-
       <div id="faceit-matches" style="display:none"></div>
     </div>
 
-    <!-- Loading -->
     <div id="loading" style="display:none">
       <div class="spinner"></div>
-      <p id="loading-text">Analyzing demo...</p>
-      <p class="text-muted">This may take 30-60 seconds for large files</p>
+      <p id="loading-text"></p>
+      <p class="text-muted" data-i18n="loading_hint"></p>
     </div>
 
-    <!-- Error -->
     <div id="error" class="error-box" style="display:none"></div>
   </div>
 
-  <!-- ═══ RESULTS SECTION ═══ -->
+  <!-- RESULTS SECTION -->
   <div id="results-section" style="display:none">
-    <button class="btn-back" id="back-btn">&larr; New Analysis</button>
-
+    <button class="btn-back" id="back-btn">&larr; <span data-i18n="btn_new_analysis"></span></button>
     <div id="match-info" class="card match-info-card"></div>
-
-    <!-- Summary cards -->
     <div id="summary-cards" class="summary-row"></div>
-
-    <!-- How it works -->
-    <div class="info-box">
-      <strong>How it works:</strong> the system checks reaction time (FOV-based sight-to-fire),
-      accuracy, headshot rate, smoke kills, aim snap angles and metric consistency.
-      Score 0 (clean) to 100 (high suspicion). High scores can also belong to skilled players.
-    </div>
-
-    <!-- Player list -->
+    <div id="how-it-works" class="info-box"></div>
     <div id="player-list"></div>
   </div>
 </div>
 
 <script>
-// ── Config ──
-const FACEIT_ENABLED = {{ 'true' if has_faceit else 'false' }};
+// ══════════════════════════════════════════════════════════════════════════════
+//  i18n
+// ══════════════════════════════════════════════════════════════════════════════
+const I18N = {
+  // ── UI chrome ──
+  subtitle:            { en:'Upload a demo or paste a link \u2014 get suspicion analysis for every player',
+                         ru:'\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u0434\u0435\u043c\u043e \u0438\u043b\u0438 \u0432\u0441\u0442\u0430\u0432\u044c \u0441\u0441\u044b\u043b\u043a\u0443 \u2014 \u043f\u043e\u043b\u0443\u0447\u0438 \u0430\u043d\u0430\u043b\u0438\u0437 \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u0438 \u043f\u043e \u043a\u0430\u0436\u0434\u043e\u043c\u0443 \u0438\u0433\u0440\u043e\u043a\u0443' },
+  tab_upload:          { en:'Upload File',       ru:'\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0444\u0430\u0439\u043b' },
+  tab_url:             { en:'Demo URL',          ru:'\u0421\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 \u0434\u0435\u043c\u043e' },
+  drop_hint:           { en:'or click to select a file', ru:'\u0438\u043b\u0438 \u043d\u0430\u0436\u043c\u0438 \u0434\u043b\u044f \u0432\u044b\u0431\u043e\u0440\u0430 \u0444\u0430\u0439\u043b\u0430' },
+  btn_analyze:         { en:'Analyze',           ru:'\u0410\u043d\u0430\u043b\u0438\u0437' },
+  btn_search:          { en:'Search',            ru:'\u041f\u043e\u0438\u0441\u043a' },
+  btn_load_matches:    { en:'Load Matches',      ru:'\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043c\u0430\u0442\u0447\u0438' },
+  btn_new_analysis:    { en:'New Analysis',      ru:'\u041d\u043e\u0432\u044b\u0439 \u0430\u043d\u0430\u043b\u0438\u0437' },
+  url_hint:            { en:'Direct .dem / .dem.gz / .dem.zst download link (e.g. from Faceit, Leetify)',
+                         ru:'\u041f\u0440\u044f\u043c\u0430\u044f \u0441\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 .dem / .dem.gz / .dem.zst (\u043d\u0430\u043f\u0440. \u0441 Faceit, Leetify)' },
+  url_placeholder:     { en:'https://demos.faceit.com/... or any direct .dem link',
+                         ru:'https://demos.faceit.com/... \u0438\u043b\u0438 \u043b\u044e\u0431\u0430\u044f \u043f\u0440\u044f\u043c\u0430\u044f \u0441\u0441\u044b\u043b\u043a\u0430 \u043d\u0430 .dem' },
+  decoded_sharecode:   { en:'Decoded share code:', ru:'\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 share code:' },
+  loading_hint:        { en:'This may take 30\u201360 seconds for large files', ru:'\u042d\u0442\u043e \u043c\u043e\u0436\u0435\u0442 \u0437\u0430\u043d\u044f\u0442\u044c 30\u201360 \u0441\u0435\u043a\u0443\u043d\u0434 \u0434\u043b\u044f \u0431\u043e\u043b\u044c\u0448\u0438\u0445 \u0444\u0430\u0439\u043b\u043e\u0432' },
 
-// ── State ──
+  // ── Loading states ──
+  loading_upload:      { en:'Uploading & analyzing', ru:'\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0438 \u0430\u043d\u0430\u043b\u0438\u0437' },
+  loading_decode:      { en:'Decoding share code\u2026', ru:'\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043e\u0432\u043a\u0430 share code\u2026' },
+  loading_download:    { en:'Downloading & analyzing\u2026', ru:'\u0421\u043a\u0430\u0447\u0438\u0432\u0430\u043d\u0438\u0435 \u0438 \u0430\u043d\u0430\u043b\u0438\u0437\u2026' },
+  loading_faceit_search: { en:'Searching Faceit player\u2026', ru:'\u041f\u043e\u0438\u0441\u043a \u0438\u0433\u0440\u043e\u043a\u0430 Faceit\u2026' },
+  loading_faceit_matches:{ en:'Loading match history\u2026', ru:'\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0438\u0441\u0442\u043e\u0440\u0438\u0438 \u043c\u0430\u0442\u0447\u0435\u0439\u2026' },
+  loading_faceit_demo: { en:'Downloading Faceit demo & analyzing\u2026', ru:'\u0421\u043a\u0430\u0447\u0438\u0432\u0430\u043d\u0438\u0435 \u0434\u0435\u043c\u043e Faceit \u0438 \u0430\u043d\u0430\u043b\u0438\u0437\u2026' },
+
+  // ── Results ──
+  lbl_players:         { en:'Players',           ru:'\u0418\u0433\u0440\u043e\u043a\u0438' },
+  lbl_suspicious:      { en:'Suspicious',        ru:'\u041f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0435' },
+  lbl_clean:           { en:'Clean',             ru:'\u0427\u0438\u0441\u0442\u044b\u0435' },
+  lbl_rounds:          { en:'rounds',            ru:'\u0440\u0430\u0443\u043d\u0434\u043e\u0432' },
+  how_it_works:        { en:'<strong>How it works:</strong> the system checks reaction time (FOV-based sight-to-fire), accuracy, headshot rate, smoke kills, aim snap angles and metric consistency. Score 0 (clean) to 100 (high suspicion). High scores can also belong to skilled players.',
+                         ru:'<strong>\u041a\u0430\u043a \u044d\u0442\u043e \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442:</strong> \u0441\u0438\u0441\u0442\u0435\u043c\u0430 \u043f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u0442 \u0432\u0440\u0435\u043c\u044f \u0440\u0435\u0430\u043a\u0446\u0438\u0438 (FOV sight-to-fire), \u0442\u043e\u0447\u043d\u043e\u0441\u0442\u044c, \u043f\u0440\u043e\u0446\u0435\u043d\u0442 \u0445\u0435\u0434\u0448\u043e\u0442\u043e\u0432, \u0443\u0431\u0438\u0439\u0441\u0442\u0432\u0430 \u0447\u0435\u0440\u0435\u0437 \u0434\u044b\u043c, \u0440\u0435\u0437\u043a\u0438\u0435 \u0441\u043d\u0430\u043f\u044b \u043f\u0440\u0438\u0446\u0435\u043b\u0430 \u0438 \u043a\u043e\u043d\u0441\u0438\u0441\u0442\u0435\u043d\u0442\u043d\u043e\u0441\u0442\u044c. \u041e\u0446\u0435\u043d\u043a\u0430 0 (\u0447\u0438\u0441\u0442\u043e) \u0434\u043e 100 (\u0432\u044b\u0441\u043e\u043a\u0430\u044f \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c). \u0412\u044b\u0441\u043e\u043a\u0438\u0439 \u0441\u043a\u043e\u0440 \u043c\u043e\u0436\u0435\u0442 \u0431\u044b\u0442\u044c \u0438 \u0443 \u0441\u043a\u0438\u043b\u043b\u043e\u0432\u044b\u0445 \u0438\u0433\u0440\u043e\u043a\u043e\u0432.' },
+  recent_matches:      { en:'Recent Matches',    ru:'\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u043c\u0430\u0442\u0447\u0438' },
+  no_matches:          { en:'No matches found',  ru:'\u041c\u0430\u0442\u0447\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b' },
+  no_demo:             { en:'No demo',           ru:'\u041d\u0435\u0442 \u0434\u0435\u043c\u043e' },
+  lbl_engagements_short:{ en:'engagements',      ru:'\u043a\u043e\u043d\u0442\u0430\u043a\u0442\u043e\u0432' },
+  lbl_flags:           { en:'Suspicion Flags',   ru:'\u0424\u043b\u0430\u0433\u0438 \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u0438' },
+
+  // ── Suspicion levels ──
+  susp_high:           { en:'High',    ru:'\u0412\u044b\u0441\u043e\u043a\u0438\u0439' },
+  susp_medium:         { en:'Medium',  ru:'\u0421\u0440\u0435\u0434\u043d\u0438\u0439' },
+  susp_low:            { en:'Low',     ru:'\u041d\u0438\u0437\u043a\u0438\u0439' },
+  susp_clean:          { en:'Clean',   ru:'\u0427\u0438\u0441\u0442\u043e' },
+
+  // ── Histogram labels ──
+  hist_reaction:       { en:'Reaction Time (ms)',   ru:'\u0412\u0440\u0435\u043c\u044f \u0440\u0435\u0430\u043a\u0446\u0438\u0438 (ms)' },
+  hist_fov:            { en:'FOV Sight\u2192Fire (ms)', ru:'FOV \u0417\u0440\u0435\u043d\u0438\u0435\u2192\u0412\u044b\u0441\u0442\u0440\u0435\u043b (ms)' },
+  hist_snap:           { en:'Snap Angles (\u00b0)',  ru:'\u0423\u0433\u043b\u044b \u0441\u043d\u0430\u043f\u043e\u0432 (\u00b0)' },
+
+  // ── Steam share code ──
+  steam_cant_download: { en:'\u26a0 <strong>Valve MM demos cannot be auto-downloaded</strong> \u2014 CS2 uses the Steam Game Coordinator protocol to deliver demo files. To analyze this match:',
+                         ru:'\u26a0 <strong>\u0414\u0435\u043c\u043e \u0438\u0437 MM Valve \u043d\u0435\u043b\u044c\u0437\u044f \u0441\u043a\u0430\u0447\u0430\u0442\u044c \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438</strong> \u2014 CS2 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442 \u043f\u0440\u043e\u0442\u043e\u043a\u043e\u043b Steam Game Coordinator. \u0427\u0442\u043e\u0431\u044b \u043f\u0440\u043e\u0430\u043d\u0430\u043b\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u044d\u0442\u043e\u0442 \u043c\u0430\u0442\u0447:' },
+  steam_step_1:        { en:'Open this link in CS2 (paste in console or use "Watch" tab \u2192 Your Matches)',
+                         ru:'\u041e\u0442\u043a\u0440\u043e\u0439 \u044d\u0442\u0443 \u0441\u0441\u044b\u043b\u043a\u0443 \u0432 CS2 (\u0432\u0441\u0442\u0430\u0432\u044c \u0432 \u043a\u043e\u043d\u0441\u043e\u043b\u044c \u0438\u043b\u0438 \u00ab\u0421\u043c\u043e\u0442\u0440\u0435\u0442\u044c\u00bb \u2192 \u0412\u0430\u0448\u0438 \u043c\u0430\u0442\u0447\u0438)' },
+  steam_step_2:        { en:'The demo will download to your <code>csgo/replays/</code> folder',
+                         ru:'\u0414\u0435\u043c\u043e \u0441\u043a\u0430\u0447\u0430\u0435\u0442\u0441\u044f \u0432 \u043f\u0430\u043f\u043a\u0443 <code>csgo/replays/</code>' },
+  steam_step_3:        { en:'Upload the <code>.dem</code> file using the "Upload File" tab above',
+                         ru:'\u0417\u0430\u0433\u0440\u0443\u0437\u0438 <code>.dem</code> \u0444\u0430\u0439\u043b \u0447\u0435\u0440\u0435\u0437 \u0432\u043a\u043b\u0430\u0434\u043a\u0443 \u00ab\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0444\u0430\u0439\u043b\u00bb' },
+  steam_alt:           { en:'Or use <a href="https://cs-demo-manager.com" target="_blank" style="color:var(--accent)">CS Demo Manager</a> to batch-download your matches.',
+                         ru:'\u0418\u043b\u0438 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439 <a href="https://cs-demo-manager.com" target="_blank" style="color:var(--accent)">CS Demo Manager</a> \u0434\u043b\u044f \u043f\u0430\u043a\u0435\u0442\u043d\u043e\u0439 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438.' },
+
+  // ── Metric labels (keys used in metricCell) ──
+  m_fov_stf:           { en:'FOV Sight\u2192Fire',       ru:'FOV \u0417\u0440\u0435\u043d\u0438\u0435\u2192\u0412\u044b\u0441\u0442\u0440\u0435\u043b' },
+  m_fov_min:           { en:'FOV Min S\u2192F',          ru:'FOV \u041c\u0438\u043d \u0417\u2192\u0412' },
+  m_avg_react:         { en:'Avg Reaction',            ru:'\u0421\u0440. \u0440\u0435\u0430\u043a\u0446\u0438\u044f' },
+  m_min_react:         { en:'Min Reaction',            ru:'\u041c\u0438\u043d. \u0440\u0435\u0430\u043a\u0446\u0438\u044f' },
+  m_fov_std:           { en:'FOV Sight\u2192Dmg',       ru:'FOV \u0417\u0440\u0435\u043d\u0438\u0435\u2192\u0423\u0440\u043e\u043d' },
+  m_avg_ttd:           { en:'Avg TTD',                 ru:'\u0421\u0440. TTD' },
+  m_hs_rate:           { en:'HS Rate',                 ru:'\u041f\u0440\u043e\u0446\u0435\u043d\u0442 HS' },
+  m_accuracy:          { en:'Accuracy',                ru:'\u0422\u043e\u0447\u043d\u043e\u0441\u0442\u044c' },
+  m_smoke:             { en:'Smoke Kills',             ru:'\u0423\u0431. \u0447\u0435\u0440\u0435\u0437 \u0434\u044b\u043c' },
+  m_snap:              { en:'Max Snap',                ru:'\u041c\u0430\u043a\u0441. \u0441\u043d\u0430\u043f' },
+  m_hs_var:            { en:'HS Variance',             ru:'\u0414\u0438\u0441\u043f\u0435\u0440\u0441\u0438\u044f HS' },
+  m_engagements:       { en:'Engagements',             ru:'\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b' },
+
+  // ── Metric tooltips ──
+  tip_fov_stf:  { en:'Time from when the enemy entered the player\'s FOV (80\u00b0 cone) until the first shot. The KEY anti-cheat metric. Pre-aim situations (holding angles) are filtered out. Pros: 200\u2013400ms. Cheats: <150ms consistently.',
+                  ru:'\u0412\u0440\u0435\u043c\u044f \u043e\u0442 \u043f\u043e\u044f\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u043e\u0442\u0438\u0432\u043d\u0438\u043a\u0430 \u0432 \u043f\u043e\u043b\u0435 \u0437\u0440\u0435\u043d\u0438\u044f (80\u00b0) \u0434\u043e \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u0432\u044b\u0441\u0442\u0440\u0435\u043b\u0430. \u041a\u041b\u042e\u0427\u0415\u0412\u0410\u042f \u043c\u0435\u0442\u0440\u0438\u043a\u0430. \u041f\u0440\u0435\u0434-\u044d\u0439\u043c (hold angle) \u043e\u0442\u0444\u0438\u043b\u044c\u0442\u0440\u043e\u0432\u0430\u043d. \u041f\u0440\u043e: 200\u2013400ms. \u0427\u0438\u0442\u044b: <150ms \u0441\u0442\u0430\u0431\u0438\u043b\u044c\u043d\u043e.' },
+  tip_fov_min:  { en:'Fastest single sight-to-fire reaction (pre-aims excluded). Below 80ms is physically impossible for a human.',
+                  ru:'\u0421\u0430\u043c\u0430\u044f \u0431\u044b\u0441\u0442\u0440\u0430\u044f \u0440\u0435\u0430\u043a\u0446\u0438\u044f \u0437\u0440\u0435\u043d\u0438\u0435\u2192\u0432\u044b\u0441\u0442\u0440\u0435\u043b (\u0431\u0435\u0437 \u043f\u0440\u0435\u0434-\u044d\u0439\u043c\u0430). \u041c\u0435\u043d\u044c\u0448\u0435 80ms \u0444\u0438\u0437\u0438\u0447\u0435\u0441\u043a\u0438 \u043d\u0435\u0432\u043e\u0437\u043c\u043e\u0436\u043d\u043e \u0434\u043b\u044f \u0447\u0435\u043b\u043e\u0432\u0435\u043a\u0430.' },
+  tip_avg_react:{ en:'Average time between taking damage and dealing damage back. Normal: 200\u2013400ms.',
+                  ru:'\u0421\u0440\u0435\u0434\u043d\u0435\u0435 \u0432\u0440\u0435\u043c\u044f \u043c\u0435\u0436\u0434\u0443 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435\u043c \u0443\u0440\u043e\u043d\u0430 \u0438 \u043e\u0442\u0432\u0435\u0442\u043d\u044b\u043c \u0443\u0440\u043e\u043d\u043e\u043c. \u041d\u043e\u0440\u043c\u0430: 200\u2013400ms.' },
+  tip_min_react:{ en:'Fastest single retaliation. Below 70ms is suspicious.',
+                  ru:'\u0421\u0430\u043c\u0430\u044f \u0431\u044b\u0441\u0442\u0440\u0430\u044f \u043e\u0442\u0432\u0435\u0442\u043d\u0430\u044f \u0440\u0435\u0430\u043a\u0446\u0438\u044f. \u041c\u0435\u043d\u044c\u0448\u0435 70ms \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e.' },
+  tip_fov_std:  { en:'Time from FOV entry until first damage dealt. Includes aiming + bullet travel.',
+                  ru:'\u0412\u0440\u0435\u043c\u044f \u043e\u0442 \u043f\u043e\u044f\u0432\u043b\u0435\u043d\u0438\u044f \u0432 FOV \u0434\u043e \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u0443\u0440\u043e\u043d\u0430. \u0412\u043a\u043b\u044e\u0447\u0430\u0435\u0442 \u043f\u0440\u0438\u0446\u0435\u043b\u0438\u0432\u0430\u043d\u0438\u0435 + \u043f\u043e\u043b\u0451\u0442 \u043f\u0443\u043b\u0438.' },
+  tip_avg_ttd:  { en:'Average time to first damage each round. How quickly the player finds enemies.',
+                  ru:'\u0421\u0440\u0435\u0434\u043d\u0435\u0435 \u0432\u0440\u0435\u043c\u044f \u0434\u043e \u043f\u0435\u0440\u0432\u043e\u0433\u043e \u0443\u0440\u043e\u043d\u0430 \u0432 \u0440\u0430\u0443\u043d\u0434\u0435. \u041a\u0430\u043a \u0431\u044b\u0441\u0442\u0440\u043e \u0438\u0433\u0440\u043e\u043a \u043d\u0430\u0445\u043e\u0434\u0438\u0442 \u043f\u0440\u043e\u0442\u0438\u0432\u043d\u0438\u043a\u043e\u0432.' },
+  tip_hs_rate:  { en:'Headshot kill %. Normal: 40\u201355%. Above 75% with 8+ kills is suspicious.',
+                  ru:'\u041f\u0440\u043e\u0446\u0435\u043d\u0442 \u0443\u0431\u0438\u0439\u0441\u0442\u0432 \u0432 \u0433\u043e\u043b\u043e\u0432\u0443. \u041d\u043e\u0440\u043c\u0430: 40\u201355%. \u0411\u043e\u043b\u0435\u0435 75% \u043f\u0440\u0438 8+ \u043a\u0438\u043b\u043b\u0430\u0445 \u2014 \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e.' },
+  tip_accuracy: { en:'% of bullets that hit. Normal: 20\u201335%. Above 55% is anomalous.',
+                  ru:'\u041f\u0440\u043e\u0446\u0435\u043d\u0442 \u043f\u043e\u043f\u0430\u0434\u0430\u043d\u0438\u0439. \u041d\u043e\u0440\u043c\u0430: 20\u201335%. \u0411\u043e\u043b\u0435\u0435 55% \u2014 \u0430\u043d\u043e\u043c\u0430\u043b\u0438\u044f.' },
+  tip_smoke:    { en:'Kills through smoke. 20%+ of total kills through smoke is suspicious.',
+                  ru:'\u0423\u0431\u0438\u0439\u0441\u0442\u0432\u0430 \u0447\u0435\u0440\u0435\u0437 \u0434\u044b\u043c. 20%+ \u043e\u0442 \u0432\u0441\u0435\u0445 \u043a\u0438\u043b\u043b\u043e\u0432 \u2014 \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e.' },
+  tip_snap:     { en:'Largest aim snap before a kill (within 8 ticks). Above 60\u00b0 is suspicious.',
+                  ru:'\u041c\u0430\u043a\u0441\u0438\u043c\u0430\u043b\u044c\u043d\u044b\u0439 \u0440\u0435\u0437\u043a\u0438\u0439 \u043f\u043e\u0432\u043e\u0440\u043e\u0442 \u043f\u0440\u0438\u0446\u0435\u043b\u0430 \u043f\u0435\u0440\u0435\u0434 \u043a\u0438\u043b\u043b\u043e\u043c. \u0411\u043e\u043b\u0435\u0435 60\u00b0 \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e.' },
+  tip_hs_var:   { en:'HS rate variance between rounds. Low (<80) + high HS% = unnaturally consistent (bot).',
+                  ru:'\u0414\u0438\u0441\u043f\u0435\u0440\u0441\u0438\u044f HS \u043c\u0435\u0436\u0434\u0443 \u0440\u0430\u0443\u043d\u0434\u0430\u043c\u0438. \u041d\u0438\u0437\u043a\u0430\u044f (<80) + \u0432\u044b\u0441\u043e\u043a\u0438\u0439 HS% = \u043d\u0435\u0435\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u043a\u043e\u043d\u0441\u0438\u0441\u0442\u0435\u043d\u0442\u043d\u043e\u0441\u0442\u044c (\u0431\u043e\u0442).' },
+  tip_engage:   { en:'Total FOV-based engagements. More = more reliable metrics.',
+                  ru:'\u0412\u0441\u0435\u0433\u043e FOV-\u043a\u043e\u043d\u0442\u0430\u043a\u0442\u043e\u0432. \u0411\u043e\u043b\u044c\u0448\u0435 = \u043d\u0430\u0434\u0451\u0436\u043d\u0435\u0435 \u043c\u0435\u0442\u0440\u0438\u043a\u0438.' },
+};
+
+let LANG = localStorage.getItem('cs2checker_lang') || 'en';
+
+function t(key) { return (I18N[key] || {})[LANG] || (I18N[key] || {})['en'] || key; }
+
+function setLang(lang) {
+  LANG = lang;
+  localStorage.setItem('cs2checker_lang', lang);
+  document.querySelectorAll('.lang-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.lang === lang));
+  applyI18N();
+  // Re-render results if visible
+  if (data) { renderMatchInfo(); renderSummary(); $('how-it-works').innerHTML = t('how_it_works'); renderPlayers(); }
+}
+
+function applyI18N() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.innerHTML = t(el.dataset.i18n);
+  });
+  const urlInput = $('url-input');
+  if (urlInput) urlInput.placeholder = t('url_placeholder');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  Config & State
+// ══════════════════════════════════════════════════════════════════════════════
+const FACEIT_ENABLED = {{ 'true' if has_faceit else 'false' }};
 let data = null;
 let expandedPlayer = null;
 
-// ── DOM refs ──
 const $ = id => document.getElementById(id);
 const inputSection = $('input-section');
 const resultsSection = $('results-section');
@@ -119,6 +240,7 @@ const errorBox = $('error');
 
 // ── Init ──
 if (FACEIT_ENABLED) $('faceit-tab').style.display = '';
+setLang(LANG);
 
 // ── Tabs ──
 document.querySelectorAll('.tab').forEach(tab => {
@@ -130,7 +252,9 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ── File upload ──
+// ══════════════════════════════════════════════════════════════════════════════
+//  File upload
+// ══════════════════════════════════════════════════════════════════════════════
 const dropZone = $('drop-zone');
 const fileInput = $('file-input');
 
@@ -145,7 +269,7 @@ dropZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
 
 async function uploadFile(file) {
-  showLoading('Uploading & analyzing ' + file.name + '...');
+  showLoading(t('loading_upload') + ' ' + file.name + '\u2026');
   const form = new FormData();
   form.append('file', file);
   try {
@@ -156,7 +280,9 @@ async function uploadFile(file) {
   } catch (e) { showError(e.message); }
 }
 
-// ── URL analyze ──
+// ══════════════════════════════════════════════════════════════════════════════
+//  URL analyze
+// ══════════════════════════════════════════════════════════════════════════════
 $('url-submit').addEventListener('click', analyzeUrl);
 $('url-input').addEventListener('keydown', e => { if (e.key === 'Enter') analyzeUrl(); });
 
@@ -164,12 +290,9 @@ async function analyzeUrl() {
   const url = $('url-input').value.trim();
   if (!url) return;
 
-  // Detect steam:// share code links or CSGO-... codes
   const isSteam = url.includes('steam://rungame') || url.startsWith('CSGO-');
-
   if (isSteam) {
-    // Decode share code — show info, explain that direct download isn't possible
-    showLoading('Decoding share code...');
+    showLoading(t('loading_decode'));
     try {
       const resp = await fetch('/api/decode-sharecode', {
         method: 'POST',
@@ -184,8 +307,7 @@ async function analyzeUrl() {
     return;
   }
 
-  // Regular URL — download and analyze
-  showLoading('Downloading & analyzing...');
+  showLoading(t('loading_download'));
   try {
     const resp = await fetch('/api/analyze-url', {
       method: 'POST',
@@ -209,18 +331,18 @@ function showSteamInfo(info) {
       <code>Token:</code> ${info.token}
     </div>
     <div style="color:var(--yellow); font-size:13px; line-height:1.6;">
-      &#9888; <strong>Valve MM demos cannot be auto-downloaded</strong> — CS2 uses the Steam
-      Game Coordinator protocol to deliver demo files. To analyze this match:<br>
-      <strong>1.</strong> Open this link in CS2 (paste in console or use "Watch" tab → Your Matches)<br>
-      <strong>2.</strong> The demo will download to your <code>csgo/replays/</code> folder<br>
-      <strong>3.</strong> Upload the <code>.dem</code> file using the "Upload File" tab above<br><br>
-      Or use <a href="https://cs-demo-manager.com" target="_blank" style="color:var(--accent)">CS Demo Manager</a>
-      to batch-download your matches.
+      ${t('steam_cant_download')}<br>
+      <strong>1.</strong> ${t('steam_step_1')}<br>
+      <strong>2.</strong> ${t('steam_step_2')}<br>
+      <strong>3.</strong> ${t('steam_step_3')}<br><br>
+      ${t('steam_alt')}
     </div>
   `;
 }
 
-// ── Faceit ──
+// ══════════════════════════════════════════════════════════════════════════════
+//  Faceit
+// ══════════════════════════════════════════════════════════════════════════════
 $('faceit-search').addEventListener('click', faceitSearch);
 $('faceit-nickname').addEventListener('keydown', e => { if (e.key === 'Enter') faceitSearch(); });
 
@@ -229,13 +351,12 @@ async function faceitSearch() {
   if (!nick) return;
   $('faceit-player').style.display = 'none';
   $('faceit-matches').style.display = 'none';
-  showLoading('Searching Faceit player...');
+  showLoading(t('loading_faceit_search'));
   try {
     const resp = await fetch('/api/faceit/player?nickname=' + encodeURIComponent(nick));
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.error || 'Player not found');
     hideLoading();
-
     $('faceit-avatar').src = json.avatar || '';
     $('faceit-avatar').style.display = json.avatar ? '' : 'none';
     $('faceit-name').textContent = json.nickname;
@@ -248,7 +369,7 @@ async function faceitSearch() {
 $('faceit-load-matches').addEventListener('click', async () => {
   const playerId = $('faceit-player').dataset.playerId;
   if (!playerId) return;
-  showLoading('Loading match history...');
+  showLoading(t('loading_faceit_matches'));
   try {
     const resp = await fetch('/api/faceit/matches?player_id=' + encodeURIComponent(playerId));
     const json = await resp.json();
@@ -261,13 +382,11 @@ $('faceit-load-matches').addEventListener('click', async () => {
 function renderFaceitMatches(matches) {
   const container = $('faceit-matches');
   container.style.display = '';
-  container.innerHTML = '<h3 class="section-title">Recent Matches</h3>';
-
+  container.innerHTML = '<h3 class="section-title">' + t('recent_matches') + '</h3>';
   if (!matches.length) {
-    container.innerHTML += '<p class="text-muted">No matches found</p>';
+    container.innerHTML += '<p class="text-muted">' + t('no_matches') + '</p>';
     return;
   }
-
   matches.forEach(m => {
     const date = m.finished_at ? new Date(m.finished_at * 1000).toLocaleDateString() : '?';
     const hasDemoUrl = m.demo_url && m.demo_url.length > 5;
@@ -279,15 +398,15 @@ function renderFaceitMatches(matches) {
         <span class="match-score">${esc(m.score || '?')}</span>
         <span class="text-muted">${date}</span>
       </div>
-      <button class="btn-primary btn-sm" ${hasDemoUrl ? '' : 'disabled title="No demo available"'}
+      <button class="btn-primary btn-sm" ${hasDemoUrl ? '' : 'disabled'}
         data-url="${esc(m.demo_url || '')}">
-        ${hasDemoUrl ? 'Analyze' : 'No demo'}
+        ${hasDemoUrl ? t('btn_analyze') : t('no_demo')}
       </button>
     `;
     div.querySelector('button').addEventListener('click', async function() {
       const url = this.dataset.url;
       if (!url) return;
-      showLoading('Downloading Faceit demo & analyzing...');
+      showLoading(t('loading_faceit_demo'));
       try {
         const resp = await fetch('/api/faceit/analyze', {
           method: 'POST',
@@ -303,29 +422,23 @@ function renderFaceitMatches(matches) {
   });
 }
 
-// ── UI helpers ──
+// ══════════════════════════════════════════════════════════════════════════════
+//  UI helpers
+// ══════════════════════════════════════════════════════════════════════════════
 function showLoading(text) {
-  hideError();
-  hideSteamInfo();
-  loadingText.textContent = text || 'Analyzing...';
+  hideError(); hideSteamInfo();
+  loadingText.textContent = text || '';
   loading.style.display = '';
 }
 function hideLoading() { loading.style.display = 'none'; }
-function showError(msg) {
-  hideLoading();
-  errorBox.textContent = msg;
-  errorBox.style.display = '';
-}
+function showError(msg) { hideLoading(); errorBox.textContent = msg; errorBox.style.display = ''; }
 function hideError() { errorBox.style.display = 'none'; }
 function hideSteamInfo() { const si = $('steam-info'); if (si) si.style.display = 'none'; }
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-// ── Results ──
+// ══════════════════════════════════════════════════════════════════════════════
+//  Results
+// ══════════════════════════════════════════════════════════════════════════════
 function showResults(json) {
   hideLoading();
   data = json;
@@ -334,6 +447,7 @@ function showResults(json) {
   resultsSection.style.display = '';
   renderMatchInfo();
   renderSummary();
+  $('how-it-works').innerHTML = t('how_it_works');
   renderPlayers();
 }
 
@@ -347,7 +461,7 @@ function renderMatchInfo() {
   $('match-info').innerHTML = `
     <div class="match-meta">
       <span class="badge badge-map">${esc(data.map)}</span>
-      <span>${data.total_rounds} rounds</span>
+      <span>${data.total_rounds} ${t('lbl_rounds')}</span>
       <span class="text-muted">${data.tick_rate} tick</span>
     </div>
   `;
@@ -357,18 +471,17 @@ function renderSummary() {
   const ac = Object.values(data.anticheat);
   const susp = ac.filter(p => p.suspicion_score >= 30).length;
   const clean = ac.filter(p => p.suspicion_score < 30).length;
-
   $('summary-cards').innerHTML = `
     <div class="card summary-card">
-      <div class="summary-label">Players</div>
+      <div class="summary-label">${t('lbl_players')}</div>
       <div class="summary-value">${ac.length}</div>
     </div>
     <div class="card summary-card">
-      <div class="summary-label">Suspicious</div>
+      <div class="summary-label">${t('lbl_suspicious')}</div>
       <div class="summary-value" style="color:${susp > 0 ? 'var(--orange)' : 'var(--green)'}">${susp}</div>
     </div>
     <div class="card summary-card">
-      <div class="summary-label">Clean</div>
+      <div class="summary-label">${t('lbl_clean')}</div>
       <div class="summary-value" style="color:var(--green)">${clean}</div>
     </div>
   `;
@@ -376,15 +489,14 @@ function renderSummary() {
 
 function suspBadge(score) {
   let label, color;
-  if (score >= 60) { label = 'High'; color = 'var(--red)'; }
-  else if (score >= 30) { label = 'Medium'; color = 'var(--orange)'; }
-  else if (score >= 15) { label = 'Low'; color = 'var(--yellow)'; }
-  else { label = 'Clean'; color = 'var(--green)'; }
+  if (score >= 60)      { label = t('susp_high');   color = 'var(--red)'; }
+  else if (score >= 30) { label = t('susp_medium'); color = 'var(--orange)'; }
+  else if (score >= 15) { label = t('susp_low');    color = 'var(--yellow)'; }
+  else                  { label = t('susp_clean');  color = 'var(--green)'; }
   return `<span class="susp-badge" style="--c:${color}">${score}/100 &bull; ${label}</span>`;
 }
 
 function metricStatus(val, thresholds) {
-  // thresholds: [danger, warn] — lower is worse
   if (val === null || val === undefined) return 'ok';
   if (val < thresholds[0]) return 'danger';
   if (val < thresholds[1]) return 'warn';
@@ -392,41 +504,38 @@ function metricStatus(val, thresholds) {
 }
 
 function metricStatusHigh(val, thresholds) {
-  // thresholds: [warn, danger] — higher is worse
   if (val === null || val === undefined) return 'ok';
   if (val > thresholds[1]) return 'danger';
   if (val > thresholds[0]) return 'warn';
   return 'ok';
 }
 
-// ── Metric tooltips ──
-const METRIC_TIPS = {
-  'FOV Sight\u2192Fire':   'Time from when the enemy entered the player\'s field of view (80\u00b0 cone) until the first shot was fired. The KEY anti-cheat metric. Pros: 200-400ms. Cheats: <150ms consistently.',
-  'FOV Min S\u2192F':      'Fastest single sight-to-fire reaction across all engagements. Below 80ms is physically impossible for a human.',
-  'Avg Reaction':         'Average time between taking damage from an opponent and dealing damage back. Measures counter-fire speed. Normal: 200-400ms.',
-  'Min Reaction':         'Fastest single retaliation reaction in the match. Below 70ms is suspicious (simultaneous trades are filtered out).',
-  'FOV Sight\u2192Dmg':   'Time from when the enemy appeared in FOV until the first damage was dealt. Includes both aiming and bullet travel.',
-  'Avg TTD':              'Average time to first damage in each round (from round start). Indicates how quickly the player finds and engages enemies.',
-  'HS Rate':              'Percentage of kills that were headshots. Normal: 40-55%. Above 75% with 8+ kills is suspicious.',
-  'Accuracy':             'Percentage of bullets fired that hit an enemy (excluding grenades/knife). Normal: 20-35%. Above 55% is anomalous.',
-  'Smoke Kills':          'Kills through smoke grenades. Occasional smoke kills are normal. 20%+ of total kills through smoke is suspicious.',
-  'Max Snap':             'Largest single crosshair snap angle detected before a kill (within 8 ticks). Measures sudden aim jumps. Above 60\u00b0 is suspicious.',
-  'HS Variance':          'Statistical variance of headshot rate between rounds. Low variance (<80) with high HS% means unnaturally consistent aim \u2014 a bot indicator.',
-  'Engagements':          'Total number of FOV-based engagements detected. More engagements = more reliable metrics.',
+// Metric tooltip lookup by i18n key
+const TIP_MAP = {
+  m_fov_stf: 'tip_fov_stf', m_fov_min: 'tip_fov_min',
+  m_avg_react: 'tip_avg_react', m_min_react: 'tip_min_react',
+  m_fov_std: 'tip_fov_std', m_avg_ttd: 'tip_avg_ttd',
+  m_hs_rate: 'tip_hs_rate', m_accuracy: 'tip_accuracy',
+  m_smoke: 'tip_smoke', m_snap: 'tip_snap',
+  m_hs_var: 'tip_hs_var', m_engagements: 'tip_engage',
 };
 
-function metricCell(label, value, status) {
-  const tip = METRIC_TIPS[label] || '';
+function metricCell(i18nKey, value, status) {
+  const label = t(i18nKey);
+  const tipKey = TIP_MAP[i18nKey] || '';
+  const tip = tipKey ? t(tipKey) : '';
   return `<div class="metric-cell metric-${status} has-tip" data-tip="${esc(tip)}">
     <span class="metric-label">${label} <span class="tip-icon">?</span></span>
     <span class="metric-value">${value}</span>
   </div>`;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  Player list
+// ══════════════════════════════════════════════════════════════════════════════
 function renderPlayers() {
   const list = $('player-list');
   list.innerHTML = '';
-
   const players = Object.entries(data.anticheat)
     .sort((a, b) => b[1].suspicion_score - a[1].suspicion_score);
 
@@ -435,7 +544,7 @@ function renderPlayers() {
     const card = document.createElement('div');
     card.className = 'card player-card';
     card.dataset.sid = sid;
-
+    const engLabel = ac.engagement_count ? (' &bull; ' + ac.engagement_count + ' ' + t('lbl_engagements_short')) : '';
     card.innerHTML = `
       <div class="player-header" data-sid="${sid}">
         <div class="player-left">
@@ -448,7 +557,7 @@ function renderPlayers() {
               ${stats.kills || 0}K / ${stats.deaths || 0}D
               &bull; ${ac.hs_rate}% HS
               &bull; ${ac.accuracy}% acc
-              ${ac.engagement_count ? '&bull; ' + ac.engagement_count + ' engagements' : ''}
+              ${engLabel}
             </div>
           </div>
         </div>
@@ -459,7 +568,6 @@ function renderPlayers() {
       </div>
       <div class="player-detail" style="display:none"></div>
     `;
-
     card.querySelector('.player-header').addEventListener('click', () => toggleDetail(card, sid, ac, stats));
     list.appendChild(card);
   });
@@ -469,18 +577,12 @@ function toggleDetail(card, sid, ac, stats) {
   const detail = card.querySelector('.player-detail');
   const chevron = card.querySelector('.chevron');
   const isOpen = detail.style.display !== 'none';
-
-  // Close all others
   document.querySelectorAll('.player-detail').forEach(d => d.style.display = 'none');
   document.querySelectorAll('.chevron').forEach(c => c.classList.remove('open'));
-
   if (isOpen) return;
-
   chevron.classList.add('open');
   detail.style.display = '';
   detail.innerHTML = buildDetailHTML(ac, stats);
-
-  // Draw histograms
   if (ac.reaction_times && ac.reaction_times.length > 1)
     drawHistogram(detail.querySelector('.hist-reaction'), ac.reaction_times, '#3b82f6');
   if (ac.fov_sight_to_fire && ac.fov_sight_to_fire.length > 1)
@@ -490,7 +592,6 @@ function toggleDetail(card, sid, ac, stats) {
 }
 
 function buildDetailHTML(ac, stats) {
-  // Suspicion bar
   const barColor = ac.suspicion_score >= 60 ? 'var(--red)' :
     ac.suspicion_score >= 30 ? 'var(--orange)' :
     ac.suspicion_score >= 15 ? 'var(--yellow)' : 'var(--green)';
@@ -499,111 +600,80 @@ function buildDetailHTML(ac, stats) {
     <div class="susp-bar-wrap">
       <div class="susp-bar" style="width:${ac.suspicion_score}%;background:${barColor}"></div>
     </div>
-
     <div class="metrics-grid">
-      ${metricCell('FOV Sight→Fire', ac.fov_avg_sight_to_fire != null ? ac.fov_avg_sight_to_fire + ' ms' : 'N/A',
+      ${metricCell('m_fov_stf', ac.fov_avg_sight_to_fire != null ? ac.fov_avg_sight_to_fire + ' ms' : 'N/A',
         metricStatus(ac.fov_avg_sight_to_fire, [150, 250]))}
-      ${metricCell('FOV Min S→F', ac.fov_min_sight_to_fire != null ? ac.fov_min_sight_to_fire + ' ms' : 'N/A',
+      ${metricCell('m_fov_min', ac.fov_min_sight_to_fire != null ? ac.fov_min_sight_to_fire + ' ms' : 'N/A',
         metricStatus(ac.fov_min_sight_to_fire, [80, 150]))}
-      ${metricCell('Avg Reaction', ac.avg_reaction_ms != null ? ac.avg_reaction_ms + ' ms' : 'N/A',
+      ${metricCell('m_avg_react', ac.avg_reaction_ms != null ? ac.avg_reaction_ms + ' ms' : 'N/A',
         metricStatus(ac.avg_reaction_ms, [120, 180]))}
-      ${metricCell('Min Reaction', ac.min_reaction_ms != null ? ac.min_reaction_ms + ' ms' : 'N/A',
+      ${metricCell('m_min_react', ac.min_reaction_ms != null ? ac.min_reaction_ms + ' ms' : 'N/A',
         metricStatus(ac.min_reaction_ms, [70, 120]))}
-      ${metricCell('FOV Sight→Dmg', ac.fov_avg_sight_to_damage != null ? ac.fov_avg_sight_to_damage + ' ms' : 'N/A', 'ok')}
-      ${metricCell('Avg TTD', ac.avg_ttd_ms != null ? ac.avg_ttd_ms + ' ms' : 'N/A', 'ok')}
-      ${metricCell('HS Rate', ac.hs_rate + '%',
+      ${metricCell('m_fov_std', ac.fov_avg_sight_to_damage != null ? ac.fov_avg_sight_to_damage + ' ms' : 'N/A', 'ok')}
+      ${metricCell('m_avg_ttd', ac.avg_ttd_ms != null ? ac.avg_ttd_ms + ' ms' : 'N/A', 'ok')}
+      ${metricCell('m_hs_rate', ac.hs_rate + '%',
         metricStatusHigh(ac.hs_rate, [55, 75]))}
-      ${metricCell('Accuracy', ac.accuracy + '%',
+      ${metricCell('m_accuracy', ac.accuracy + '%',
         metricStatusHigh(ac.accuracy, [40, 55]))}
-      ${metricCell('Smoke Kills', ac.smoke_kills + ' (' + ac.smoke_kill_rate + '%)',
+      ${metricCell('m_smoke', ac.smoke_kills + ' (' + ac.smoke_kill_rate + '%)',
         metricStatusHigh(ac.smoke_kill_rate, [10, 20]))}
-      ${metricCell('Max Snap', ac.max_snap_angle != null ? ac.max_snap_angle + '°' : 'N/A',
+      ${metricCell('m_snap', ac.max_snap_angle != null ? ac.max_snap_angle + '\u00b0' : 'N/A',
         metricStatusHigh(ac.max_snap_angle, [40, 60]))}
-      ${metricCell('HS Variance', ac.hs_variance != null ? ac.hs_variance : 'N/A',
+      ${metricCell('m_hs_var', ac.hs_variance != null ? ac.hs_variance : 'N/A',
         ac.hs_variance != null && ac.hs_variance < 80 && ac.hs_rate > 55 ? 'warn' : 'ok')}
-      ${metricCell('Engagements', ac.engagement_count || 0, 'ok')}
+      ${metricCell('m_engagements', (ac.engagement_count || 0) + (ac.preaim_count ? ' (' + ac.preaim_count + ' pre-aim)' : ''), 'ok')}
     </div>
   `;
 
-  // Flags
   if (ac.flags && ac.flags.length > 0) {
-    html += `<div class="flags-section"><h4 class="section-label">Suspicion Flags</h4>`;
-    ac.flags.forEach(f => {
-      html += `<div class="flag-item">&#9888; ${esc(f)}</div>`;
-    });
+    html += `<div class="flags-section"><h4 class="section-label">${t('lbl_flags')}</h4>`;
+    ac.flags.forEach(f => { html += `<div class="flag-item">&#9888; ${esc(f)}</div>`; });
     html += `</div>`;
   }
 
-  // Histograms
   html += `<div class="hist-row">`;
-  if (ac.reaction_times && ac.reaction_times.length > 1) {
-    html += `<div class="hist-box"><h4 class="section-label">Reaction Time (ms)</h4><canvas class="hist-reaction" height="120"></canvas></div>`;
-  }
-  if (ac.fov_sight_to_fire && ac.fov_sight_to_fire.length > 1) {
-    html += `<div class="hist-box"><h4 class="section-label">FOV Sight→Fire (ms)</h4><canvas class="hist-fov" height="120"></canvas></div>`;
-  }
-  if (ac.snap_scores && ac.snap_scores.length > 1) {
-    html += `<div class="hist-box"><h4 class="section-label">Snap Angles (°)</h4><canvas class="hist-snap" height="120"></canvas></div>`;
-  }
+  if (ac.reaction_times && ac.reaction_times.length > 1)
+    html += `<div class="hist-box"><h4 class="section-label">${t('hist_reaction')}</h4><canvas class="hist-reaction" height="120"></canvas></div>`;
+  if (ac.fov_sight_to_fire && ac.fov_sight_to_fire.length > 1)
+    html += `<div class="hist-box"><h4 class="section-label">${t('hist_fov')}</h4><canvas class="hist-fov" height="120"></canvas></div>`;
+  if (ac.snap_scores && ac.snap_scores.length > 1)
+    html += `<div class="hist-box"><h4 class="section-label">${t('hist_snap')}</h4><canvas class="hist-snap" height="120"></canvas></div>`;
   html += `</div>`;
-
   return html;
 }
 
-// ── Canvas histogram ──
+// ══════════════════════════════════════════════════════════════════════════════
+//  Canvas histogram
+// ══════════════════════════════════════════════════════════════════════════════
 function drawHistogram(canvas, values, color) {
   if (!canvas || !values.length) return;
   const ctx = canvas.getContext('2d');
   const W = canvas.parentElement.clientWidth - 2;
   const H = 120;
-  canvas.width = W;
-  canvas.height = H;
-
+  canvas.width = W; canvas.height = H;
   const bins = Math.min(12, Math.max(4, Math.ceil(values.length / 3)));
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
   const binSize = range / bins;
-
   const counts = new Array(bins).fill(0);
-  values.forEach(v => {
-    const idx = Math.min(Math.floor((v - min) / binSize), bins - 1);
-    counts[idx]++;
-  });
-
+  values.forEach(v => { const idx = Math.min(Math.floor((v - min) / binSize), bins - 1); counts[idx]++; });
   const maxCount = Math.max(...counts);
   const barW = (W - 40) / bins;
   const chartH = H - 25;
-
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '9px sans-serif';
-  ctx.textAlign = 'center';
-
+  ctx.fillStyle = '#94a3b8'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
   for (let i = 0; i < bins; i++) {
     const x = 30 + i * barW;
     const h = maxCount > 0 ? (counts[i] / maxCount) * (chartH - 5) : 0;
     const y = chartH - h;
-
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.8;
-    ctx.beginPath();
-    ctx.roundRect(x + 1, y, barW - 2, h, 2);
-    ctx.fill();
+    ctx.fillStyle = color; ctx.globalAlpha = 0.8;
+    ctx.beginPath(); ctx.roundRect(x + 1, y, barW - 2, h, 2); ctx.fill();
     ctx.globalAlpha = 1;
-
-    // Label
-    ctx.fillStyle = '#64748b';
-    ctx.font = '9px sans-serif';
+    ctx.fillStyle = '#64748b'; ctx.font = '9px sans-serif';
     ctx.fillText(Math.round(min + i * binSize), x + barW / 2, H - 2);
-
-    // Count
-    if (counts[i] > 0) {
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(counts[i], x + barW / 2, y - 3);
-    }
+    if (counts[i] > 0) { ctx.fillStyle = '#94a3b8'; ctx.fillText(counts[i], x + barW / 2, y - 3); }
   }
 }
 </script>
-
 </body>
 </html>

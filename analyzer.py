@@ -269,6 +269,20 @@ def compute_engagements(parser, hurts_df, fires_df, rounds, players, tick_rate=6
                 fire_to_damage_ms = round(((dmg_tick - ft) / tick_rate) * 1000)
                 break
 
+        # Pre-aim detection: if the player was already aimed at the
+        # enemy's position (< 10°) when the enemy first entered FOV,
+        # this is a pre-aim, not a reaction.  Common when holding angles.
+        is_preaim = False
+        a_sight = atk_ticks.get(first_in_fov_tick)
+        v_sight = vic_ticks.get(first_in_fov_tick)
+        entry_angle = None
+        if a_sight and v_sight:
+            pa = (a_sight[0], a_sight[1], a_sight[2] + EYE_HEIGHT)
+            pv = (v_sight[0], v_sight[1], v_sight[2] + EYE_HEIGHT)
+            entry_angle = _angle_between_deg(a_sight[3], a_sight[4], pa, pv)
+            if entry_angle < 10:
+                is_preaim = True
+
         engagements[attacker].append({
             "round_num": c["round_num"],
             "victim": victim,
@@ -277,6 +291,8 @@ def compute_engagements(parser, hurts_df, fires_df, rounds, players, tick_rate=6
             "sight_to_damage_ms": sight_to_damage_ms,
             "sight_to_fire_ms": sight_to_fire_ms,
             "fire_to_damage_ms": fire_to_damage_ms,
+            "entry_angle": round(entry_angle, 1) if entry_angle is not None else None,
+            "is_preaim": is_preaim,
         })
 
     return dict(engagements)
@@ -509,16 +525,23 @@ def parse_demo_anticheat(file_path: str) -> dict:
     # Enrich anticheat data with FOV engagement metrics
     for steam_id, ac in anticheat.items():
         player_engs = engagements.get(steam_id, [])
-        stf = [e["sight_to_fire_ms"] for e in player_engs if e["sight_to_fire_ms"] is not None]
+
+        # Separate real reactions from pre-aims (holding angles)
+        real_engs = [e for e in player_engs if not e.get("is_preaim", False)]
+        preaim_engs = [e for e in player_engs if e.get("is_preaim", False)]
+
+        stf = [e["sight_to_fire_ms"] for e in real_engs if e["sight_to_fire_ms"] is not None]
+        stf_all = [e["sight_to_fire_ms"] for e in player_engs if e["sight_to_fire_ms"] is not None]
         std = [e["sight_to_damage_ms"] for e in player_engs if e["sight_to_damage_ms"] is not None]
         ftd = [e["fire_to_damage_ms"] for e in player_engs if e["fire_to_damage_ms"] is not None]
 
-        ac["fov_sight_to_fire"] = stf[:50]
+        ac["fov_sight_to_fire"] = stf_all[:50]
         ac["fov_avg_sight_to_fire"] = round(float(np.mean(stf))) if stf else None
         ac["fov_min_sight_to_fire"] = round(float(np.min(stf))) if stf else None
         ac["fov_avg_sight_to_damage"] = round(float(np.mean(std))) if std else None
         ac["fov_avg_fire_to_damage"] = round(float(np.mean(ftd))) if ftd else None
         ac["engagement_count"] = len(player_engs)
+        ac["preaim_count"] = len(preaim_engs)
 
     # Minimal player stats for context
     basic_stats = {}
