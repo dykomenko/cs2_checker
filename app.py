@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify, render_template
 
 from config import FACEIT_API_KEY, HOST, PORT, DEBUG, UPLOAD_DIR, DOWNLOAD_DIR, MAX_UPLOAD_MB
 from analyzer import parse_demo_anticheat
+from cache import get_cached, put_cache
 from sources import (download_demo, decode_sharecode, sharecode_info,
                      faceit_get_player, faceit_get_matches, faceit_get_match_detail)
 
@@ -17,6 +18,17 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+
+def analyze_with_cache(demo_path: str) -> dict:
+    """Analyze a demo file, using MD5-based cache to skip re-parsing."""
+    cached = get_cached(demo_path)
+    if cached is not None:
+        cached["_cached"] = True
+        return cached
+    result = parse_demo_anticheat(demo_path)
+    put_cache(demo_path, result)
+    return result
 
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
@@ -41,7 +53,7 @@ def analyze_upload():
     f.save(dest)
 
     try:
-        result = parse_demo_anticheat(dest)
+        result = analyze_with_cache(dest)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -58,7 +70,7 @@ def analyze_url():
 
     try:
         local_path = download_demo(url)
-        result = parse_demo_anticheat(local_path)
+        result = analyze_with_cache(local_path)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -113,7 +125,6 @@ def api_faceit_matches():
         return jsonify({"error": "player_id required"}), 400
     try:
         matches = faceit_get_matches(player_id, FACEIT_API_KEY)
-        # Enrich each match with demo_url, map, score
         enriched = []
         for m in matches:
             try:
@@ -142,7 +153,7 @@ def api_faceit_analyze():
         return jsonify({"error": "demo_url required"}), 400
     try:
         local_path = download_demo(demo_url)
-        result = parse_demo_anticheat(local_path)
+        result = analyze_with_cache(local_path)
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()

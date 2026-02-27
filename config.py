@@ -12,6 +12,7 @@ DEBUG = os.environ.get("DEBUG", "0") == "1"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
+CACHE_DIR = os.path.join(BASE_DIR, "cache")
 
 # Limits
 MAX_UPLOAD_MB = 500

@@ -12,6 +12,7 @@ env/
 *.dem.gz
 uploads/
 downloads/
+cache/
 
 # Env
 .env
