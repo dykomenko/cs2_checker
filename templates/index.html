@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CS2 Anti-Cheat Checker</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="app">
+  <!-- ═══ INPUT SECTION ═══ -->
+  <div id="input-section">
+    <div class="hero">
+      <h1>&#128737; CS2 Anti-Cheat Checker</h1>
+      <p class="subtitle">Upload a demo or paste a link — get suspicion analysis for every player</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="upload">Upload File</button>
+      <button class="tab" data-tab="url">Demo URL</button>
+      <button class="tab" data-tab="faceit" id="faceit-tab" style="display:none">Faceit</button>
+    </div>
+
+    <!-- Upload tab -->
+    <div id="tab-upload" class="tab-content active">
+      <div id="drop-zone">
+        <div class="drop-icon">&#128193;</div>
+        <div class="drop-text">Drag & drop <strong>.dem</strong> / <strong>.dem.zst</strong> / <strong>.dem.gz</strong> here</div>
+        <div class="drop-hint">or click to select a file</div>
+      </div>
+      <input type="file" id="file-input" accept=".dem,.zst,.gz" hidden>
+    </div>
+
+    <!-- URL tab -->
+    <div id="tab-url" class="tab-content">
+      <div class="url-form">
+        <input type="text" id="url-input" placeholder="https://example.com/demo.dem.gz" spellcheck="false">
+        <button class="btn-primary" id="url-submit">Analyze</button>
+      </div>
+      <p class="hint">Direct link to a .dem, .dem.zst or .dem.gz file</p>
+    </div>
+
+    <!-- Faceit tab -->
+    <div id="tab-faceit" class="tab-content">
+      <div class="url-form">
+        <input type="text" id="faceit-nickname" placeholder="Faceit nickname" spellcheck="false">
+        <button class="btn-primary" id="faceit-search">Search</button>
+      </div>
+
+      <div id="faceit-player" class="card" style="display:none">
+        <div class="faceit-player-info">
+          <img id="faceit-avatar" src="" alt="" class="avatar">
+          <div>
+            <div id="faceit-name" class="player-name"></div>
+            <div id="faceit-elo" class="text-muted"></div>
+          </div>
+        </div>
+        <button class="btn-primary" id="faceit-load-matches">Load Matches</button>
+      </div>
+
+      <div id="faceit-matches" style="display:none"></div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" style="display:none">
+      <div class="spinner"></div>
+      <p id="loading-text">Analyzing demo...</p>
+      <p class="text-muted">This may take 30-60 seconds for large files</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="error-box" style="display:none"></div>
+  </div>
+
+  <!-- ═══ RESULTS SECTION ═══ -->
+  <div id="results-section" style="display:none">
+    <button class="btn-back" id="back-btn">&larr; New Analysis</button>
+
+    <div id="match-info" class="card match-info-card"></div>
+
+    <!-- Summary cards -->
+    <div id="summary-cards" class="summary-row"></div>
+
+    <!-- How it works -->
+    <div class="info-box">
+      <strong>How it works:</strong> the system checks reaction time (FOV-based sight-to-fire),
+      accuracy, headshot rate, smoke kills, aim snap angles and metric consistency.
+      Score 0 (clean) to 100 (high suspicion). High scores can also belong to skilled players.
+    </div>
+
+    <!-- Player list -->
+    <div id="player-list"></div>
+  </div>
+</div>
+
+<script>
+// ── Config ──
+const FACEIT_ENABLED = {{ 'true' if has_faceit else 'false' }};
+
+// ── State ──
+let data = null;
+let expandedPlayer = null;
+
+// ── DOM refs ──
+const $ = id => document.getElementById(id);
+const inputSection = $('input-section');
+const resultsSection = $('results-section');
+const loading = $('loading');
+const loadingText = $('loading-text');
+const errorBox = $('error');
+
+// ── Init ──
+if (FACEIT_ENABLED) $('faceit-tab').style.display = '';
+
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    $('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ── File upload ──
+const dropZone = $('drop-zone');
+const fileInput = $('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+async function uploadFile(file) {
+  showLoading('Uploading & analyzing ' + file.name + '...');
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const resp = await fetch('/api/analyze', { method: 'POST', body: form });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || 'Analysis failed');
+    showResults(json);
+  } catch (e) { showError(e.message); }
+}
+
+// ── URL analyze ──
+$('url-submit').addEventListener('click', analyzeUrl);
+$('url-input').addEventListener('keydown', e => { if (e.key === 'Enter') analyzeUrl(); });
+
+async function analyzeUrl() {
+  const url = $('url-input').value.trim();
+  if (!url) return;
+  showLoading('Downloading & analyzing...');
+  try {
+    const resp = await fetch('/api/analyze-url', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url }),
+    });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || 'Analysis failed');
+    showResults(json);
+  } catch (e) { showError(e.message); }
+}
+
+// ── Faceit ──
+$('faceit-search').addEventListener('click', faceitSearch);
+$('faceit-nickname').addEventListener('keydown', e => { if (e.key === 'Enter') faceitSearch(); });
+
+async function faceitSearch() {
+  const nick = $('faceit-nickname').value.trim();
+  if (!nick) return;
+  $('faceit-player').style.display = 'none';
+  $('faceit-matches').style.display = 'none';
+  showLoading('Searching Faceit player...');
+  try {
+    const resp = await fetch('/api/faceit/player?nickname=' + encodeURIComponent(nick));
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || 'Player not found');
+    hideLoading();
+
+    $('faceit-avatar').src = json.avatar || '';
+    $('faceit-avatar').style.display = json.avatar ? '' : 'none';
+    $('faceit-name').textContent = json.nickname;
+    $('faceit-elo').textContent = 'ELO: ' + json.faceit_elo + ' | Level: ' + json.skill_level;
+    $('faceit-player').style.display = '';
+    $('faceit-player').dataset.playerId = json.player_id;
+  } catch (e) { showError(e.message); }
+}
+
+$('faceit-load-matches').addEventListener('click', async () => {
+  const playerId = $('faceit-player').dataset.playerId;
+  if (!playerId) return;
+  showLoading('Loading match history...');
+  try {
+    const resp = await fetch('/api/faceit/matches?player_id=' + encodeURIComponent(playerId));
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || 'Failed to load matches');
+    hideLoading();
+    renderFaceitMatches(json.matches);
+  } catch (e) { showError(e.message); }
+});
+
+function renderFaceitMatches(matches) {
+  const container = $('faceit-matches');
+  container.style.display = '';
+  container.innerHTML = '<h3 class="section-title">Recent Matches</h3>';
+
+  if (!matches.length) {
+    container.innerHTML += '<p class="text-muted">No matches found</p>';
+    return;
+  }
+
+  matches.forEach(m => {
+    const date = m.finished_at ? new Date(m.finished_at * 1000).toLocaleDateString() : '?';
+    const hasDemoUrl = m.demo_url && m.demo_url.length > 5;
+    const div = document.createElement('div');
+    div.className = 'card match-row';
+    div.innerHTML = `
+      <div class="match-row-info">
+        <span class="badge badge-map">${esc(m.map || '?')}</span>
+        <span class="match-score">${esc(m.score || '?')}</span>
+        <span class="text-muted">${date}</span>
+      </div>
+      <button class="btn-primary btn-sm" ${hasDemoUrl ? '' : 'disabled title="No demo available"'}
+        data-url="${esc(m.demo_url || '')}">
+        ${hasDemoUrl ? 'Analyze' : 'No demo'}
+      </button>
+    `;
+    div.querySelector('button').addEventListener('click', async function() {
+      const url = this.dataset.url;
+      if (!url) return;
+      showLoading('Downloading Faceit demo & analyzing...');
+      try {
+        const resp = await fetch('/api/faceit/analyze', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ demo_url: url }),
+        });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || 'Analysis failed');
+        showResults(json);
+      } catch (e) { showError(e.message); }
+    });
+    container.appendChild(div);
+  });
+}
+
+// ── UI helpers ──
+function showLoading(text) {
+  hideError();
+  loadingText.textContent = text || 'Analyzing...';
+  loading.style.display = '';
+}
+function hideLoading() { loading.style.display = 'none'; }
+function showError(msg) {
+  hideLoading();
+  errorBox.textContent = msg;
+  errorBox.style.display = '';
+}
+function hideError() { errorBox.style.display = 'none'; }
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Results ──
+function showResults(json) {
+  hideLoading();
+  data = json;
+  expandedPlayer = null;
+  inputSection.style.display = 'none';
+  resultsSection.style.display = '';
+  renderMatchInfo();
+  renderSummary();
+  renderPlayers();
+}
+
+$('back-btn').addEventListener('click', () => {
+  resultsSection.style.display = 'none';
+  inputSection.style.display = '';
+  data = null;
+});
+
+function renderMatchInfo() {
+  $('match-info').innerHTML = `
+    <div class="match-meta">
+      <span class="badge badge-map">${esc(data.map)}</span>
+      <span>${data.total_rounds} rounds</span>
+      <span class="text-muted">${data.tick_rate} tick</span>
+    </div>
+  `;
+}
+
+function renderSummary() {
+  const ac = Object.values(data.anticheat);
+  const susp = ac.filter(p => p.suspicion_score >= 30).length;
+  const clean = ac.filter(p => p.suspicion_score < 30).length;
+
+  $('summary-cards').innerHTML = `
+    <div class="card summary-card">
+      <div class="summary-label">Players</div>
+      <div class="summary-value">${ac.length}</div>
+    </div>
+    <div class="card summary-card">
+      <div class="summary-label">Suspicious</div>
+      <div class="summary-value" style="color:${susp > 0 ? 'var(--orange)' : 'var(--green)'}">${susp}</div>
+    </div>
+    <div class="card summary-card">
+      <div class="summary-label">Clean</div>
+      <div class="summary-value" style="color:var(--green)">${clean}</div>
+    </div>
+  `;
+}
+
+function suspBadge(score) {
+  let label, color;
+  if (score >= 60) { label = 'High'; color = 'var(--red)'; }
+  else if (score >= 30) { label = 'Medium'; color = 'var(--orange)'; }
+  else if (score >= 15) { label = 'Low'; color = 'var(--yellow)'; }
+  else { label = 'Clean'; color = 'var(--green)'; }
+  return `<span class="susp-badge" style="--c:${color}">${score}/100 &bull; ${label}</span>`;
+}
+
+function metricStatus(val, thresholds) {
+  // thresholds: [danger, warn] — lower is worse
+  if (val === null || val === undefined) return 'ok';
+  if (val < thresholds[0]) return 'danger';
+  if (val < thresholds[1]) return 'warn';
+  return 'ok';
+}
+
+function metricStatusHigh(val, thresholds) {
+  // thresholds: [warn, danger] — higher is worse
+  if (val === null || val === undefined) return 'ok';
+  if (val > thresholds[1]) return 'danger';
+  if (val > thresholds[0]) return 'warn';
+  return 'ok';
+}
+
+function metricCell(label, value, status) {
+  return `<div class="metric-cell metric-${status}">
+    <span class="metric-label">${label}</span>
+    <span class="metric-value">${value}</span>
+  </div>`;
+}
+
+function renderPlayers() {
+  const list = $('player-list');
+  list.innerHTML = '';
+
+  const players = Object.entries(data.anticheat)
+    .sort((a, b) => b[1].suspicion_score - a[1].suspicion_score);
+
+  players.forEach(([sid, ac]) => {
+    const stats = data.players[sid] || {};
+    const card = document.createElement('div');
+    card.className = 'card player-card';
+    card.dataset.sid = sid;
+
+    card.innerHTML = `
+      <div class="player-header" data-sid="${sid}">
+        <div class="player-left">
+          <div class="player-icon ${ac.suspicion_score >= 30 ? 'icon-warn' : 'icon-ok'}">
+            ${ac.suspicion_score >= 30 ? '&#9888;' : '&#10003;'}
+          </div>
+          <div>
+            <div class="player-name">${esc(ac.name)}</div>
+            <div class="text-muted text-sm">
+              ${stats.kills || 0}K / ${stats.deaths || 0}D
+              &bull; ${ac.hs_rate}% HS
+              &bull; ${ac.accuracy}% acc
+              ${ac.engagement_count ? '&bull; ' + ac.engagement_count + ' engagements' : ''}
+            </div>
+          </div>
+        </div>
+        <div class="player-right">
+          ${suspBadge(ac.suspicion_score)}
+          <span class="chevron">&#9654;</span>
+        </div>
+      </div>
+      <div class="player-detail" style="display:none"></div>
+    `;
+
+    card.querySelector('.player-header').addEventListener('click', () => toggleDetail(card, sid, ac, stats));
+    list.appendChild(card);
+  });
+}
+
+function toggleDetail(card, sid, ac, stats) {
+  const detail = card.querySelector('.player-detail');
+  const chevron = card.querySelector('.chevron');
+  const isOpen = detail.style.display !== 'none';
+
+  // Close all others
+  document.querySelectorAll('.player-detail').forEach(d => d.style.display = 'none');
+  document.querySelectorAll('.chevron').forEach(c => c.classList.remove('open'));
+
+  if (isOpen) return;
+
+  chevron.classList.add('open');
+  detail.style.display = '';
+  detail.innerHTML = buildDetailHTML(ac, stats);
+
+  // Draw histograms
+  if (ac.reaction_times && ac.reaction_times.length > 1)
+    drawHistogram(detail.querySelector('.hist-reaction'), ac.reaction_times, '#3b82f6');
+  if (ac.fov_sight_to_fire && ac.fov_sight_to_fire.length > 1)
+    drawHistogram(detail.querySelector('.hist-fov'), ac.fov_sight_to_fire, '#a855f7');
+  if (ac.snap_scores && ac.snap_scores.length > 1)
+    drawHistogram(detail.querySelector('.hist-snap'), ac.snap_scores, '#f97316');
+}
+
+function buildDetailHTML(ac, stats) {
+  // Suspicion bar
+  const barColor = ac.suspicion_score >= 60 ? 'var(--red)' :
+    ac.suspicion_score >= 30 ? 'var(--orange)' :
+    ac.suspicion_score >= 15 ? 'var(--yellow)' : 'var(--green)';
+
+  let html = `
+    <div class="susp-bar-wrap">
+      <div class="susp-bar" style="width:${ac.suspicion_score}%;background:${barColor}"></div>
+    </div>
+
+    <div class="metrics-grid">
+      ${metricCell('FOV Sight→Fire', ac.fov_avg_sight_to_fire != null ? ac.fov_avg_sight_to_fire + ' ms' : 'N/A',
+        metricStatus(ac.fov_avg_sight_to_fire, [150, 250]))}
+      ${metricCell('FOV Min S→F', ac.fov_min_sight_to_fire != null ? ac.fov_min_sight_to_fire + ' ms' : 'N/A',
+        metricStatus(ac.fov_min_sight_to_fire, [80, 150]))}
+      ${metricCell('Avg Reaction', ac.avg_reaction_ms != null ? ac.avg_reaction_ms + ' ms' : 'N/A',
+        metricStatus(ac.avg_reaction_ms, [120, 180]))}
+      ${metricCell('Min Reaction', ac.min_reaction_ms != null ? ac.min_reaction_ms + ' ms' : 'N/A',
+        metricStatus(ac.min_reaction_ms, [70, 120]))}
+      ${metricCell('FOV Sight→Dmg', ac.fov_avg_sight_to_damage != null ? ac.fov_avg_sight_to_damage + ' ms' : 'N/A', 'ok')}
+      ${metricCell('Avg TTD', ac.avg_ttd_ms != null ? ac.avg_ttd_ms + ' ms' : 'N/A', 'ok')}
+      ${metricCell('HS Rate', ac.hs_rate + '%',
+        metricStatusHigh(ac.hs_rate, [55, 75]))}
+      ${metricCell('Accuracy', ac.accuracy + '%',
+        metricStatusHigh(ac.accuracy, [40, 55]))}
+      ${metricCell('Smoke Kills', ac.smoke_kills + ' (' + ac.smoke_kill_rate + '%)',
+        metricStatusHigh(ac.smoke_kill_rate, [10, 20]))}
+      ${metricCell('Max Snap', ac.max_snap_angle != null ? ac.max_snap_angle + '°' : 'N/A',
+        metricStatusHigh(ac.max_snap_angle, [40, 60]))}
+      ${metricCell('HS Variance', ac.hs_variance != null ? ac.hs_variance : 'N/A',
+        ac.hs_variance != null && ac.hs_variance < 80 && ac.hs_rate > 55 ? 'warn' : 'ok')}
+      ${metricCell('Engagements', ac.engagement_count || 0, 'ok')}
+    </div>
+  `;
+
+  // Flags
+  if (ac.flags && ac.flags.length > 0) {
+    html += `<div class="flags-section"><h4 class="section-label">Suspicion Flags</h4>`;
+    ac.flags.forEach(f => {
+      html += `<div class="flag-item">&#9888; ${esc(f)}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Histograms
+  html += `<div class="hist-row">`;
+  if (ac.reaction_times && ac.reaction_times.length > 1) {
+    html += `<div class="hist-box"><h4 class="section-label">Reaction Time (ms)</h4><canvas class="hist-reaction" height="120"></canvas></div>`;
+  }
+  if (ac.fov_sight_to_fire && ac.fov_sight_to_fire.length > 1) {
+    html += `<div class="hist-box"><h4 class="section-label">FOV Sight→Fire (ms)</h4><canvas class="hist-fov" height="120"></canvas></div>`;
+  }
+  if (ac.snap_scores && ac.snap_scores.length > 1) {
+    html += `<div class="hist-box"><h4 class="section-label">Snap Angles (°)</h4><canvas class="hist-snap" height="120"></canvas></div>`;
+  }
+  html += `</div>`;
+
+  return html;
+}
+
+// ── Canvas histogram ──
+function drawHistogram(canvas, values, color) {
+  if (!canvas || !values.length) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.parentElement.clientWidth - 2;
+  const H = 120;
+  canvas.width = W;
+  canvas.height = H;
+
+  const bins = Math.min(12, Math.max(4, Math.ceil(values.length / 3)));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const binSize = range / bins;
+
+  const counts = new Array(bins).fill(0);
+  values.forEach(v => {
+    const idx = Math.min(Math.floor((v - min) / binSize), bins - 1);
+    counts[idx]++;
+  });
+
+  const maxCount = Math.max(...counts);
+  const barW = (W - 40) / bins;
+  const chartH = H - 25;
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+
+  for (let i = 0; i < bins; i++) {
+    const x = 30 + i * barW;
+    const h = maxCount > 0 ? (counts[i] / maxCount) * (chartH - 5) : 0;
+    const y = chartH - h;
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.roundRect(x + 1, y, barW - 2, h, 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Label
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(Math.round(min + i * binSize), x + barW / 2, H - 2);
+
+    // Count
+    if (counts[i] > 0) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(counts[i], x + barW / 2, y - 3);
+    }
+  }
+}
+</script>
+
+</body>
+</html>

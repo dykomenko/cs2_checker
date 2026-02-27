@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+env/
+
+# Demo files (large binary)
+*.dem
+*.dem.zst
+*.dem.gz
+uploads/
+downloads/
+
+# Env
+.env
+.env.local
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
