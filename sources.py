@@ -3,8 +3,6 @@ Demo file sources — download from URL, Faceit API, Steam share codes.
 """
 import os
 import hashlib
-import struct
-import bz2
 import requests
 from urllib.parse import unquote
 from config import DOWNLOAD_DIR
@@ -64,55 +62,25 @@ def decode_sharecode(raw: str) -> tuple:
     return matchid, outcomeid, token
 
 
-def download_valve_demo(matchid: int, outcomeid: int, token: int) -> str:
-    """Try to download a Valve MM demo by match parameters.
+def sharecode_info(matchid: int, outcomeid: int, token: int) -> dict:
+    """Return decoded share code info (no download — requires Steam GC).
 
-    Valve stores demos at:
-      http://replay{N}.valve.net/730/{matchid}_{outcomeid}_{token}.dem.bz2
-    Demos expire after ~30 days.
+    CS2 changed the demo delivery system: download URLs are only available
+    via the Steam Game Coordinator protocol (requires Steam SDK / CS2 client).
+    The old replay1-4.valve.net CDN no longer exists.
     """
-    filename = f"{matchid}_{outcomeid}_{token}.dem"
-    dest = os.path.join(DOWNLOAD_DIR, filename)
-    if os.path.exists(dest):
-        return dest
-
-    bz2_dest = dest + ".bz2"
-
-    # Try multiple replay servers
-    last_err = None
-    for shard in range(1, 5):
-        url = f"http://replay{shard}.valve.net/730/{matchid}_{outcomeid}_{token}.dem.bz2"
-        try:
-            resp = requests.get(url, stream=True, timeout=60,
-                                headers={"User-Agent": "Valve/Steam HTTP Client 1.0"})
-            if resp.status_code == 200:
-                tmp = bz2_dest + ".tmp"
-                with open(tmp, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=65536):
-                        f.write(chunk)
-                os.replace(tmp, bz2_dest)
-
-                # Decompress bz2
-                with open(bz2_dest, "rb") as fin:
-                    compressed = fin.read()
-                with open(dest, "wb") as fout:
-                    fout.write(bz2.decompress(compressed))
-
-                # Clean up bz2
-                try:
-                    os.remove(bz2_dest)
-                except OSError:
-                    pass
-
-                return dest
-            last_err = f"HTTP {resp.status_code} from replay{shard}"
-        except requests.RequestException as e:
-            last_err = str(e)
-
-    raise RuntimeError(
-        f"Demo not available on Valve servers (tried 4 shards). "
-        f"Match demos expire after ~30 days. Last error: {last_err}"
-    )
+    return {
+        "matchid": matchid,
+        "outcomeid": outcomeid,
+        "token": token,
+        "sharecode": f"CSGO-...",
+        "note": (
+            "Valve MM demos cannot be downloaded directly — "
+            "CS2 uses the Steam Game Coordinator to provide download URLs. "
+            "Open the share code link in CS2 to download, then upload the .dem file here. "
+            "Alternatively, use CS Demo Manager (cs-demo-manager.com) to download."
+        ),
+    }
 
 
 # ── Direct URL download ───────────────────────────────────────────────────────

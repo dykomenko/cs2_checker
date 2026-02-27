@@ -36,10 +36,16 @@
     <!-- URL tab -->
     <div id="tab-url" class="tab-content">
       <div class="url-form">
-        <input type="text" id="url-input" placeholder="https://... or steam://rungame/730/..." spellcheck="false">
+        <input type="text" id="url-input" placeholder="https://demos.faceit.com/... or any direct .dem link" spellcheck="false">
         <button class="btn-primary" id="url-submit">Analyze</button>
       </div>
-      <p class="hint">Direct .dem link, or <code>steam://rungame/730/...</code> share code link (MM demos expire after ~30 days)</p>
+      <p class="hint">Direct .dem / .dem.gz / .dem.zst download link (e.g. from Faceit, Leetify)</p>
+
+      <!-- Steam share code info box (hidden by default) -->
+      <div id="steam-info" class="info-box" style="display:none; margin-top:12px;">
+        <strong>&#128270; Decoded share code:</strong>
+        <div id="steam-info-content" style="margin-top:6px;"></div>
+      </div>
     </div>
 
     <!-- Faceit tab -->
@@ -158,22 +164,60 @@ async function analyzeUrl() {
   const url = $('url-input').value.trim();
   if (!url) return;
 
-  // Detect steam:// share code links
-  const isSteam = url.includes('steam://') || url.startsWith('CSGO-');
-  const endpoint = isSteam ? '/api/analyze-steam' : '/api/analyze-url';
-  const body = isSteam ? { sharecode: url } : { url };
+  // Detect steam:// share code links or CSGO-... codes
+  const isSteam = url.includes('steam://rungame') || url.startsWith('CSGO-');
 
-  showLoading(isSteam ? 'Resolving share code & downloading from Valve...' : 'Downloading & analyzing...');
+  if (isSteam) {
+    // Decode share code — show info, explain that direct download isn't possible
+    showLoading('Decoding share code...');
+    try {
+      const resp = await fetch('/api/decode-sharecode', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ sharecode: url }),
+      });
+      const json = await resp.json();
+      hideLoading();
+      if (!resp.ok) throw new Error(json.error || 'Decode failed');
+      showSteamInfo(json);
+    } catch (e) { showError(e.message); }
+    return;
+  }
+
+  // Regular URL — download and analyze
+  showLoading('Downloading & analyzing...');
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetch('/api/analyze-url', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
+      body: JSON.stringify({ url }),
     });
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.error || 'Analysis failed');
     showResults(json);
   } catch (e) { showError(e.message); }
+}
+
+function showSteamInfo(info) {
+  const box = $('steam-info');
+  const content = $('steam-info-content');
+  box.style.display = '';
+  content.innerHTML = `
+    <div style="margin-bottom:8px;">
+      <code>Match ID:</code> ${info.matchid}<br>
+      <code>Outcome ID:</code> ${info.outcomeid}<br>
+      <code>Token:</code> ${info.token}
+    </div>
+    <div style="color:var(--yellow); font-size:13px; line-height:1.6;">
+      &#9888; <strong>Valve MM demos cannot be auto-downloaded</strong> — CS2 uses the Steam
+      Game Coordinator protocol to deliver demo files. To analyze this match:<br>
+      <strong>1.</strong> Open this link in CS2 (paste in console or use "Watch" tab → Your Matches)<br>
+      <strong>2.</strong> The demo will download to your <code>csgo/replays/</code> folder<br>
+      <strong>3.</strong> Upload the <code>.dem</code> file using the "Upload File" tab above<br><br>
+      Or use <a href="https://cs-demo-manager.com" target="_blank" style="color:var(--accent)">CS Demo Manager</a>
+      to batch-download your matches.
+    </div>
+  `;
 }
 
 // ── Faceit ──
@@ -262,6 +306,7 @@ function renderFaceitMatches(matches) {
 // ── UI helpers ──
 function showLoading(text) {
   hideError();
+  hideSteamInfo();
   loadingText.textContent = text || 'Analyzing...';
   loading.style.display = '';
 }
@@ -272,6 +317,7 @@ function showError(msg) {
   errorBox.style.display = '';
 }
 function hideError() { errorBox.style.display = 'none'; }
+function hideSteamInfo() { const si = $('steam-info'); if (si) si.style.display = 'none'; }
 
 function esc(s) {
   const d = document.createElement('div');
