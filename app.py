@@ -9,7 +9,8 @@ from flask import Flask, request, jsonify, render_template
 
 from config import FACEIT_API_KEY, HOST, PORT, DEBUG, UPLOAD_DIR, DOWNLOAD_DIR, MAX_UPLOAD_MB
 from analyzer import parse_demo_anticheat
-from sources import download_demo, faceit_get_player, faceit_get_matches, faceit_get_match_detail
+from sources import (download_demo, download_valve_demo, decode_sharecode,
+                     faceit_get_player, faceit_get_matches, faceit_get_match_detail)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
@@ -62,6 +63,28 @@ def analyze_url():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": f"Failed: {e}"}), 500
+
+
+@app.route("/api/analyze-steam", methods=["POST"])
+def analyze_steam():
+    """Decode Steam share code, download from Valve CDN, and analyze."""
+    data = request.get_json(silent=True) or {}
+    sharecode = data.get("sharecode", "").strip()
+    if not sharecode:
+        return jsonify({"error": "No share code provided"}), 400
+
+    try:
+        matchid, outcomeid, token = decode_sharecode(sharecode)
+    except Exception as e:
+        return jsonify({"error": f"Invalid share code: {e}"}), 400
+
+    try:
+        local_path = download_valve_demo(matchid, outcomeid, token)
+        result = parse_demo_anticheat(local_path)
+        return jsonify(result)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Faceit API ─────────────────────────────────────────────────────────────────

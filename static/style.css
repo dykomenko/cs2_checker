@@ -240,11 +240,37 @@ body {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px;
 }
-.metric-label { font-size: 12px; color: var(--text-muted); }
+.metric-label { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
 .metric-value { font-size: 14px; font-weight: 600; }
 .metric-ok .metric-value { color: var(--text-primary); }
 .metric-warn .metric-value { color: var(--yellow); }
 .metric-danger .metric-value { color: var(--red); }
+
+/* ── Tooltip ──────────────────────────────────────────────────────────────── */
+.tip-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--border); color: var(--text-muted);
+  font-size: 9px; font-weight: 700; cursor: help;
+  flex-shrink: 0;
+}
+.has-tip { position: relative; }
+.has-tip:hover .tip-icon { background: var(--accent); color: #fff; }
+.has-tip::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 0; right: 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+  font-size: 12px; font-weight: 400; color: var(--text-secondary);
+  line-height: 1.5; z-index: 100;
+  pointer-events: none; opacity: 0;
+  transition: opacity .15s;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  white-space: normal;
+}
+.has-tip:hover::after { opacity: 1; }
+
+code { background: var(--bg-secondary); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
 /* ── Flags ─────────────────────────────────────────────────────────────────── */
 .flags-section { margin-bottom: 16px; }
